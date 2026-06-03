@@ -1,0 +1,6 @@
+flask
+playwright
+apscheduler
+twilio
+anthropic
+gunicorn
