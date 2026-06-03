@@ -1,23 +1,18 @@
 import os
 import json
+import requests
 from flask import Flask, request, jsonify, render_template
 from apscheduler.schedulers.background import BackgroundScheduler
-from twilio.rest import Client
 from playwright.sync_api import sync_playwright
-import anthropic
 
 app = Flask(__name__)
 
-# Load environment variables
+# Environment variables
 CARREFOUR_EMAIL = os.environ.get("CARREFOUR_EMAIL")
 CARREFOUR_PASSWORD = os.environ.get("CARREFOUR_PASSWORD")
-TWILIO_SID = os.environ.get("TWILIO_SID")
-TWILIO_TOKEN = os.environ.get("TWILIO_TOKEN")
-TWILIO_WHATSAPP_FROM = os.environ.get("TWILIO_WHATSAPP_FROM")
-TWILIO_WHATSAPP_TO = os.environ.get("TWILIO_WHATSAPP_TO")
-ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
+TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 
-# Shopping list stored in a simple JSON file
 SHOPPING_LIST_FILE = "shopping_list.json"
 
 def load_shopping_list():
@@ -30,18 +25,18 @@ def save_shopping_list(items):
     with open(SHOPPING_LIST_FILE, "w") as f:
         json.dump(items, f)
 
-def send_whatsapp(message):
-    client = Client(TWILIO_SID, TWILIO_TOKEN)
-    client.messages.create(
-        body=message,
-        from_=TWILIO_WHATSAPP_FROM,
-        to=TWILIO_WHATSAPP_TO
-    )
+def send_telegram(message):
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    requests.post(url, json={
+        "chat_id": TELEGRAM_CHAT_ID,
+        "text": message,
+        "parse_mode": "HTML"
+    })
 
 def add_to_carrefour_cart():
     shopping_list = load_shopping_list()
     if not shopping_list:
-        send_whatsapp("⚠️ Your shopping list is empty! Add items on your webpage.")
+        send_telegram("⚠️ Your shopping list is empty! Add items on your webpage.")
         return
 
     added = []
@@ -62,35 +57,30 @@ def add_to_carrefour_cart():
 
             for item in shopping_list:
                 try:
-                    # Search for item
                     page.goto(f"https://www.carrefouruae.com/search?q={item['name']}")
                     page.wait_for_load_state("networkidle")
-
-                    # Click first add to cart button
                     add_btn = page.locator("button[data-testid='add-to-cart-button']").first
                     add_btn.click()
                     page.wait_for_timeout(1000)
                     added.append(item['name'])
-                except Exception as e:
+                except Exception:
                     failed.append(item['name'])
 
-        except Exception as e:
-            send_whatsapp(f"❌ Carrefour login failed. Please check your credentials.")
+        except Exception:
+            send_telegram("❌ Carrefour login failed. Please check your credentials.")
             browser.close()
             return
 
         browser.close()
 
-    # Send WhatsApp notification
-    msg = f"🛒 Carrefour cart updated!\n\n"
+    msg = "🛒 <b>Carrefour cart updated!</b>\n\n"
     if added:
         msg += f"✅ Added ({len(added)}):\n" + "\n".join(f"• {i}" for i in added)
     if failed:
         msg += f"\n\n❌ Failed ({len(failed)}):\n" + "\n".join(f"• {i}" for i in failed)
     msg += "\n\nGo checkout when ready! 🎉"
-    send_whatsapp(msg)
+    send_telegram(msg)
 
-# Webpage routes
 @app.route("/")
 def index():
     items = load_shopping_list()
@@ -117,7 +107,6 @@ def run_now():
     add_to_carrefour_cart()
     return jsonify({"success": True})
 
-# Scheduler - runs every Sunday at 9am
 scheduler = BackgroundScheduler()
 scheduler.add_job(add_to_carrefour_cart, "cron", day_of_week="sun", hour=9)
 scheduler.start()
