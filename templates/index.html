@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🛒 Carrefour Shopping Agent</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: Arial, sans-serif; background: #f0f4f8; padding: 20px; }
+        .container { max-width: 600px; margin: 0 auto; }
+        h1 { color: #e4002b; text-align: center; margin-bottom: 20px; }
+        .card { background: white; border-radius: 12px; padding: 20px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        .add-form { display: flex; gap: 10px; margin-bottom: 10px; }
+        input { flex: 1; padding: 10px; border: 2px solid #ddd; border-radius: 8px; font-size: 16px; }
+        input:focus { outline: none; border-color: #e4002b; }
+        button { padding: 10px 20px; border: none; border-radius: 8px; cursor: pointer; font-size: 16px; font-weight: bold; }
+        .btn-add { background: #e4002b; color: white; }
+        .btn-add:hover { background: #c0001f; }
+        .btn-run { background: #28a745; color: white; width: 100%; padding: 15px; font-size: 18px; }
+        .btn-run:hover { background: #218838; }
+        .btn-remove { background: #ff4444; color: white; padding: 6px 12px; font-size: 14px; }
+        .item { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #eee; }
+        .item:last-child { border-bottom: none; }
+        .item-name { font-size: 16px; }
+        .item-qty { color: #888; font-size: 14px; margin-left: 8px; }
+        .empty { text-align: center; color: #aaa; padding: 20px; }
+        .status { text-align: center; padding: 10px; border-radius: 8px; margin-top: 10px; display: none; }
+        .status.success { background: #d4edda; color: #155724; }
+        .status.error { background: #f8d7da; color: #721c24; }
+        .schedule-info { text-align: center; color: #888; font-size: 14px; margin-top: 10px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🛒 Carrefour Shopping Agent</h1>
+
+        <div class="card">
+            <h2 style="margin-bottom:15px">Add Item</h2>
+            <div class="add-form">
+                <input type="text" id="itemName" placeholder="e.g. Milk, Chips, Olive Oil" />
+                <input type="number" id="itemQty" placeholder="Qty" value="1" style="max-width:80px" />
+                <button class="btn-add" onclick="addItem()">Add</button>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2 style="margin-bottom:15px">Shopping List</h2>
+            <div id="itemList">
+                {% if items %}
+                    {% for item in items %}
+                    <div class="item" id="item-{{ item.name }}">
+                        <span>
+                            <span class="item-name">{{ item.name }}</span>
+                            <span class="item-qty">x{{ item.quantity }}</span>
+                        </span>
+                        <button class="btn-remove" onclick="removeItem('{{ item.name }}')">Remove</button>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="empty" id="emptyMsg">No items yet. Add something above! 👆</div>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="card">
+            <button class="btn-run" onclick="runNow()">🚀 Run Now (Add to Cart)</button>
+            <div id="status" class="status"></div>
+            <p class="schedule-info">⏰ Also runs automatically every Sunday at 9:00 AM</p>
+        </div>
+    </div>
+
+    <script>
+        async function addItem() {
+            const name = document.getElementById("itemName").value.trim();
+            const quantity = document.getElementById("itemQty").value;
+            if (!name) return alert("Please enter an item name!");
+
+            const res = await fetch("/add", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name, quantity: parseInt(quantity) })
+            });
+            const data = await res.json();
+            if (data.success) {
+                document.getElementById("itemName").value = "";
+                document.getElementById("itemQty").value = "1";
+                refreshList(data.items);
+            }
+        }
+
+        async function removeItem(name) {
+            const res = await fetch("/remove", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name })
+            });
+            const data = await res.json();
+            if (data.success) refreshList(data.items);
+        }
+
+        async function runNow() {
+            const btn = document.querySelector(".btn-run");
+            btn.textContent = "⏳ Running...";
+            btn.disabled = true;
+            showStatus("Running... check WhatsApp in a few minutes! 📱", "success");
+            await fetch("/run", { method: "POST" });
+            btn.textContent = "🚀 Run Now (Add to Cart)";
+            btn.disabled = false;
+        }
+
+        function refreshList(items) {
+            const list = document.getElementById("itemList");
+            if (items.length === 0) {
+                list.innerHTML = '<div class="empty">No items yet. Add something above! 👆</div>';
+                return;
+            }
+            list.innerHTML = items.map(item => `
+                <div class="item" id="item-${item.name}">
+                    <span>
+                        <span class="item-name">${item.name}</span>
+                        <span class="item-qty">x${item.quantity}</span>
+                    </span>
+                    <button class="btn-remove" onclick="removeItem('${item.name}')">Remove</button>
+                </div>
+            `).join("");
+        }
+
+        function showStatus(msg, type) {
+            const el = document.getElementById("status");
+            el.textContent = msg;
+            el.className = `status ${type}`;
+            el.style.display = "block";
+        }
+
+        document.getElementById("itemName").addEventListener("keypress", function(e) {
+            if (e.key === "Enter") addItem();
+        });
+    </script>
+</body>
+</html>
