@@ -1,6 +1,6 @@
 flask
 playwright
 apscheduler
-twilio
-anthropic
+requests
 gunicorn
+
